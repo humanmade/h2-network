@@ -1,8 +1,8 @@
 <?php
 
-namespace H2Selector\UI;
+namespace H2\Network\UI;
 
-use H2Selector;
+use H2\Network;
 
 const PAGE_SLUG = 'h2sites';
 
@@ -20,7 +20,7 @@ function bootstrap() {
  */
 function register_settings() {
 	register_setting( PAGE_SLUG, 'h2_sites', [
-		'sanitize_callback' => '\\H2Selector\\sanitize_sites',
+		'sanitize_callback' => '\\H2\\Network\\sanitize_sites',
 	] );
 }
 
@@ -55,7 +55,7 @@ function render_form_field() {
 	printf( '<input type="hidden" name="%s[]" value="" />', 'h2_sites' );
 
 	// Output the sites that can be activated.
-	$sites = H2Selector\get_available_sites();
+	$sites = Network\get_available_sites();
 	$current = get_site_option( 'h2_sites', [] );
 	foreach ( $sites as $site ) {
 		$value = absint( $site->blog_id );

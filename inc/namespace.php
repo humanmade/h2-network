@@ -1,6 +1,6 @@
 <?php
 
-namespace H2Selector;
+namespace H2\Network;
 
 /**
  * Bootstrap.

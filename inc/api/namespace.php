@@ -1,8 +1,8 @@
 <?php
 
-namespace H2Selector\API;
+namespace H2\Network\API;
 
-use H2Selector;
+use H2\Network;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
@@ -29,7 +29,7 @@ function register_rest_routes() {
  * @return WP_REST_Response Response data.
  */
 function get_sites_for_api( WP_REST_Request $request ) {
-	$sites = H2Selector\get_active_sites();
+	$sites = Network\get_active_sites();
 	$data = array_map( function ( WP_Site $site ) {
 		return [
 			'id' => $site->id,
