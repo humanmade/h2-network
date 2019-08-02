@@ -30,8 +30,8 @@ function register_settings() {
 function register_admin_page() {
 	add_submenu_page(
 		'settings.php',
-		'H2 Sites',
-		'H2 Sites',
+		'H2 Network',
+		'H2 Network',
 		'manage_network_options',
 		PAGE_SLUG,
 		__NAMESPACE__ . '\\render_admin_page'
@@ -41,7 +41,7 @@ function register_admin_page() {
 	add_settings_field(
 		'h2_sites',
 		'Selectable sites',
-		__NAMESPACE__ . '\\render_form_field',
+		__NAMESPACE__ . '\\render_selector_field',
 		PAGE_SLUG,
 		'default'
 	);
@@ -50,7 +50,7 @@ function register_admin_page() {
 /**
  * Render the form field for the site selector.
  */
-function render_form_field() {
+function render_selector_field() {
 	// Output a dummy input to ensure the setting is saved.
 	printf( '<input type="hidden" name="%s[]" value="" />', 'h2_sites' );
 
@@ -84,7 +84,7 @@ function render_admin_page() {
 
 	?>
 		<div class="wrap">
-			<h1><?php esc_html_e( 'H2 Site Selector', 'h2' ); ?></h1>
+			<h1><?php esc_html_e( 'H2 Network', 'h2' ); ?></h1>
 			<form
 				method="POST"
 				action="<?php echo esc_attr( sprintf( 'edit.php?action=%s', PAGE_SLUG ) ) ?>"
