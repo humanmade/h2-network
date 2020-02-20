@@ -8,6 +8,8 @@
 
 namespace H2\Network;
 
+const FILE = __FILE__;
+
 require __DIR__ . '/inc/namespace.php';
 require __DIR__ . '/inc/api/namespace.php';
 require __DIR__ . '/inc/ui/namespace.php';

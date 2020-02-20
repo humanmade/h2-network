@@ -8,6 +8,8 @@ namespace H2\Network;
 function bootstrap() {
 	API\bootstrap();
 	UI\bootstrap();
+
+	add_action( 'plugins_loaded', __NAMESPACE__ . '\\override_settings' );
 }
 
 /**
@@ -77,4 +79,50 @@ function get_active_sites( $check_access = true ) {
 	} );
 
 	return array_values( $accessible );
+}
+
+/**
+ * Override site settings.
+ *
+ * Relaxes WordPress' validation of comments and users to better handle a
+ * communication forum.
+ */
+function override_settings() {
+	// Only apply on H2 sites.
+	$theme = get_stylesheet();
+	if ( $theme !== 'h2' ) {
+		return;
+	}
+
+	// Disable moderation and whitelisting.
+	if ( get_site_option( 'h2_override_moderation', false ) ) {
+		add_filter( 'pre_option_comment_moderation', '__return_zero' );
+		add_filter( 'pre_option_comment_whitelist',  '__return_zero' );
+
+		// Override maximum allowed number of links.
+		add_filter( 'pre_option_comment_max_links', function () {
+			return 100;
+		} );
+	}
+
+	// Allow short usernames.
+	if ( get_site_option( 'h2_allow_short_usernames', false ) ) {
+		add_filter( 'wpmu_validate_user_signup', __NAMESPACE__ . '\\allow_short_usernames' );
+	}
+}
+
+/**
+ * Allow very short user names.
+ *
+ * @param array $result Result of the user validation
+ * @return array
+ */
+function allow_short_usernames( $result ) {
+    $error_name = $result['errors']->get_error_message( 'user_name' );
+    if ( empty( $error_name ) || $error_name !== __( 'Username must be at least 4 characters.' ) ) {
+        return $result;
+	}
+
+    $result['errors']->remove( 'user_name' );
+    return $result;
 }
