@@ -9,6 +9,7 @@ use WP_User_Query;
  */
 function bootstrap() {
 	API\bootstrap();
+	Comments\bootstrap();
 	Privacy\bootstrap();
 	UI\bootstrap();
 

@@ -25,6 +25,7 @@ function register_settings() {
 	register_setting( PAGE_SLUG, 'h2_default_private', [] );
 	register_setting( PAGE_SLUG, 'h2_allow_short_usernames', [] );
 	register_setting( PAGE_SLUG, 'h2_override_moderation', [] );
+	register_setting( PAGE_SLUG, 'h2_allow_editing_own_comments', [] );
 	register_setting( PAGE_SLUG, 'h2_allow_listing_users', [] );
 	register_setting( PAGE_SLUG, 'h2_link_anonymizer', [] );
 
@@ -32,6 +33,7 @@ function register_settings() {
 	add_filter( 'pre_update_site_option_h2_default_theme', __NAMESPACE__ . '\\sanitize_checkbox_value' );
 	add_filter( 'pre_update_site_option_h2_allow_short_usernames', __NAMESPACE__ . '\\sanitize_checkbox_value' );
 	add_filter( 'pre_update_site_option_h2_override_moderation', __NAMESPACE__ . '\\sanitize_checkbox_value' );
+	add_filter( 'pre_update_site_option_h2_allow_editing_own_comments', __NAMESPACE__ . '\\sanitize_checkbox_value' );
 	add_filter( 'pre_update_site_option_h2_allow_listing_users', __NAMESPACE__ . '\\sanitize_checkbox_value' );
 	add_filter( 'pre_update_site_option_h2_link_anonymizer', 'sanitize_text_field' );
 }
@@ -81,6 +83,11 @@ function register_admin_page() {
 					'option_name' => 'h2_override_moderation',
 					'label' => __( "Disable WordPress comment moderation", 'h2' ),
 					'description' => __( 'This will disable comment moderation and limits on links for all H2 sites on the network.', 'h2' ),
+				],
+				[
+					'option_name' => 'h2_allow_editing_own_comments',
+					'label' => __( 'Allow users to edit their own comments', 'h2' ),
+					'description' => __( 'Overrides comment permissions to allow users to edit and delete their own comments.', 'h2' ),
 				],
 				[
 					'option_name' => 'h2_allow_listing_users',
