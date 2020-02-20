@@ -12,6 +12,7 @@ const FILE = __FILE__;
 
 require __DIR__ . '/inc/namespace.php';
 require __DIR__ . '/inc/api/namespace.php';
+require __DIR__ . '/inc/comments/namespace.php';
 require __DIR__ . '/inc/privacy/namespace.php';
 require __DIR__ . '/inc/ui/namespace.php';
 

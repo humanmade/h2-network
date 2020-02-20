@@ -2,11 +2,14 @@
 
 namespace H2\Network;
 
+use WP_User_Query;
+
 /**
  * Bootstrap.
  */
 function bootstrap() {
 	API\bootstrap();
+	Comments\bootstrap();
 	Privacy\bootstrap();
 	UI\bootstrap();
 
@@ -110,6 +113,12 @@ function override_settings() {
 	if ( get_site_option( 'h2_allow_short_usernames', false ) ) {
 		add_filter( 'wpmu_validate_user_signup', __NAMESPACE__ . '\\allow_short_usernames' );
 	}
+
+	// Allow all users to view all other users.
+	if ( get_site_option( 'h2_allow_listing_users', false ) ) {
+		add_action( 'pre_get_users', __NAMESPACE__ . '\\remove_published_query_argument' );
+		add_filter( 'map_meta_cap', __NAMESPACE__ . '\\allow_listing_users', 10, 2 );
+	}
 }
 
 /**
@@ -126,4 +135,34 @@ function allow_short_usernames( $result ) {
 
     $result['errors']->remove( 'user_name' );
     return $result;
+}
+
+/**
+ * Allows users to view all other users on the site.
+ *
+ * By default, WordPress only allows querying for users who've made posts. With
+ * H2, comments are just as important, so this broadens that query to check for
+ * anyone with a role on the site.
+ *
+ * @param WP_User_Query $query
+ * @return void
+ */
+function remove_published_query_argument( WP_User_Query $query ) {
+	if ( $query->get( 'has_published_posts' ) ) {
+		// Remove has_published_posts argument, and replace with role check.
+		// By default, this will check they are added to the site.
+		$query->set( 'has_published_posts', false );
+	}
+}
+
+function allow_listing_users( $caps, $cap ) {
+	if ( $cap !== 'list_users' ) {
+		return $caps;
+	}
+
+	// Allow anyone who can read posts to list users.
+	$post_type = get_post_type_object( 'post' );
+	return [
+		$post_type->cap->read,
+	];
 }
