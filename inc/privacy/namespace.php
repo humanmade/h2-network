@@ -35,12 +35,15 @@ function filter_content( string $content ) : string {
 	// Get all links and generate the DomDocument from the content
 	$post_array = find_links( $content );
 
+	// Grab the network information so we can check if it's external.
+	$network = get_network();
+
 	// Loop through each link in the post and prepend the href
 	foreach ( $post_array['links'] as $link ) {
 		$old_link = $link->getAttribute( 'href' );
 
 		// Ignore if the link host is hmn.md
-		if ( strpos( parse_url( $old_link, PHP_URL_HOST ), 'hmn.md' ) !== false ) {
+		if ( strpos( parse_url( $old_link, PHP_URL_HOST ), $network->domain ) !== false ) {
 			continue;
 		}
 
