@@ -27,6 +27,7 @@ function register_settings() {
 	register_setting( PAGE_SLUG, 'h2_override_moderation', [] );
 	register_setting( PAGE_SLUG, 'h2_allow_editing_own_comments', [] );
 	register_setting( PAGE_SLUG, 'h2_allow_listing_users', [] );
+	register_setting( PAGE_SLUG, 'h2_allow_comment_html', [] );
 	register_setting( PAGE_SLUG, 'h2_link_anonymizer', [] );
 
 	add_filter( 'pre_update_site_option_h2_default_private', __NAMESPACE__ . '\\sanitize_checkbox_value' );
@@ -35,6 +36,7 @@ function register_settings() {
 	add_filter( 'pre_update_site_option_h2_override_moderation', __NAMESPACE__ . '\\sanitize_checkbox_value' );
 	add_filter( 'pre_update_site_option_h2_allow_editing_own_comments', __NAMESPACE__ . '\\sanitize_checkbox_value' );
 	add_filter( 'pre_update_site_option_h2_allow_listing_users', __NAMESPACE__ . '\\sanitize_checkbox_value' );
+	add_filter( 'pre_update_site_option_h2_allow_comment_html', __NAMESPACE__ . '\\sanitize_checkbox_value' );
 	add_filter( 'pre_update_site_option_h2_link_anonymizer', 'sanitize_text_field' );
 }
 

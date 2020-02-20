@@ -119,6 +119,11 @@ function override_settings() {
 		add_action( 'pre_get_users', __NAMESPACE__ . '\\remove_published_query_argument' );
 		add_filter( 'map_meta_cap', __NAMESPACE__ . '\\allow_listing_users', 10, 2 );
 	}
+
+	// Allow users to use more HTML in their comments.
+	if ( get_site_option( 'h2_allow_comment_html', false ) ) {
+		add_action( 'init', __NAMESPACE__ . '\\set_comment_filters' );
+	}
 }
 
 /**
@@ -165,4 +170,18 @@ function allow_listing_users( $caps, $cap ) {
 	return [
 		$post_type->cap->read,
 	];
+}
+
+/**
+ * Set comment filters for kses.
+ *
+ * We want to specifically allow comments to comment anything permitted by
+ * wp_filter_post_kses. WordPress commentors are limited from doing this by
+ * default because it can be abused with spam etc.
+ */
+function set_comment_filters() {
+	if ( ! current_user_can( 'unfiltered_html' ) ) {
+		remove_filter( 'pre_comment_content', 'wp_filter_kses' );
+		add_filter( 'pre_comment_content', 'wp_filter_post_kses' );
+	}
 }
