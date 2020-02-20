@@ -7,6 +7,7 @@ namespace H2\Network;
  */
 function bootstrap() {
 	API\bootstrap();
+	Privacy\bootstrap();
 	UI\bootstrap();
 
 	add_action( 'plugins_loaded', __NAMESPACE__ . '\\override_settings' );

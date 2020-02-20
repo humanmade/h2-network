@@ -25,11 +25,13 @@ function register_settings() {
 	register_setting( PAGE_SLUG, 'h2_default_private', [] );
 	register_setting( PAGE_SLUG, 'h2_allow_short_usernames', [] );
 	register_setting( PAGE_SLUG, 'h2_override_moderation', [] );
+	register_setting( PAGE_SLUG, 'h2_link_anonymizer', [] );
 
 	add_filter( 'pre_update_site_option_h2_default_private', __NAMESPACE__ . '\\sanitize_checkbox_value' );
 	add_filter( 'pre_update_site_option_h2_default_theme', __NAMESPACE__ . '\\sanitize_checkbox_value' );
 	add_filter( 'pre_update_site_option_h2_allow_short_usernames', __NAMESPACE__ . '\\sanitize_checkbox_value' );
 	add_filter( 'pre_update_site_option_h2_override_moderation', __NAMESPACE__ . '\\sanitize_checkbox_value' );
+	add_filter( 'pre_update_site_option_h2_link_anonymizer', 'sanitize_text_field' );
 }
 
 /**
@@ -75,6 +77,19 @@ function register_admin_page() {
 			'option_name' => 'h2_override_moderation',
 			'label' => __( "Disable WordPress comment moderation", 'h2' ),
 			'description' => __( 'This will disable comment moderation and limits on links for all H2 sites on the network.', 'h2' ),
+		]
+	);
+	add_settings_field(
+		'h2_link_anonymizer',
+		'Link anonymizer',
+		__NAMESPACE__ . '\\render_text_field',
+		PAGE_SLUG,
+		'default',
+		[
+			'option_name' => 'h2_link_anonymizer',
+			'label_for' => 'h2_link_anonymizer',
+			'description' => __( 'Set the URL for a link anonymizer. All external links will pass via this. %s will be replaced with the external URL.', 'h2' ),
+			'placeholder' => 'https://href.li/?%s',
 		]
 	);
 	add_settings_field(
@@ -134,6 +149,28 @@ function render_checkbox_field( $args ) {
 		$option,
 		checked( $current, true, false ),
 		$args['label']
+	);
+
+	if ( isset( $args['description'] ) ) {
+		printf(
+			'<p class="description">%s</p>',
+			esc_html( $args['description'] )
+		);
+	}
+}
+
+/**
+ * Render the form field for a text field.
+ */
+function render_text_field( $args ) {
+	$option = $args['option_name'];
+	$value = get_site_option( $option, '' );
+	printf(
+		'<input id="%s" type="text" name="%s" value="%s" placeholder="%s" />',
+		$args['label_for'],
+		$option,
+		$value,
+		$args['placeholder'] ?? ''
 	);
 
 	if ( isset( $args['description'] ) ) {
