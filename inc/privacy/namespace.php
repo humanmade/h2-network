@@ -42,8 +42,9 @@ function filter_content( string $content ) : string {
 	foreach ( $post_array['links'] as $link ) {
 		$old_link = $link->getAttribute( 'href' );
 
-		// Ignore if the link host is hmn.md
-		if ( strpos( parse_url( $old_link, PHP_URL_HOST ), $network->domain ) !== false ) {
+		// Ignore if the link host is on the network or relative
+		$parsed = parse_url( $old_link );
+		if ( empty( $parsed['host'] ) || strpos( $parsed['host'], $network->domain ) !== false ) {
 			continue;
 		}
 
