@@ -42,6 +42,9 @@ function filter_content( string $content ) : string {
 	foreach ( $post_array['links'] as $link ) {
 		$old_link = $link->getAttribute( 'href' );
 
+		// Set rel="noreferrer" on all links.
+		$link->setAttribute( 'rel', 'noreferrer' );
+
 		// Ignore if the link host is on the network or relative
 		$parsed = parse_url( $old_link );
 		if ( empty( $parsed['host'] ) || strpos( $parsed['host'], $network->domain ) !== false ) {
