@@ -92,6 +92,11 @@ function get_active_sites( $check_access = true ) {
  * communication forum.
  */
 function override_settings() {
+	// Allow short usernames.
+	if ( get_site_option( 'h2_allow_short_usernames', false ) ) {
+		add_filter( 'wpmu_validate_user_signup', __NAMESPACE__ . '\\allow_short_usernames' );
+	}
+
 	// Only apply on H2 sites.
 	$theme = get_stylesheet();
 	if ( $theme !== 'h2' ) {
@@ -107,11 +112,6 @@ function override_settings() {
 		add_filter( 'pre_option_comment_max_links', function () {
 			return 100;
 		} );
-	}
-
-	// Allow short usernames.
-	if ( get_site_option( 'h2_allow_short_usernames', false ) ) {
-		add_filter( 'wpmu_validate_user_signup', __NAMESPACE__ . '\\allow_short_usernames' );
 	}
 
 	// Allow all users to view all other users.
