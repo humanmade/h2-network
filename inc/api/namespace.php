@@ -19,6 +19,7 @@ function register_rest_routes() {
 	register_rest_route( 'h2/v1', 'site-switcher/sites', [
 		'methods' => WP_REST_Server::READABLE,
 		'callback' => __NAMESPACE__ . '\\get_sites_for_api',
+		'permission_callback' => '__return_true',
 	] );
 }
 
