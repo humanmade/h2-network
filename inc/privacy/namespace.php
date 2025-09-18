@@ -8,7 +8,6 @@ use DOMDocument;
  * Bootstrap privacy functions.
  */
 function bootstrap() {
-	add_action( 'wpmu_new_blog', __NAMESPACE__ . '\\make_site_private' );
 	add_action( 'plugins_loaded', __NAMESPACE__ . '\\anonymize_links' );
 }
 
