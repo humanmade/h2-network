@@ -29,6 +29,8 @@ function register_settings() {
 	register_setting( PAGE_SLUG, 'h2_allow_listing_users', [] );
 	register_setting( PAGE_SLUG, 'h2_allow_comment_html', [] );
 	register_setting( PAGE_SLUG, 'h2_link_anonymizer', [] );
+	register_setting( PAGE_SLUG, 'h2_brand_color', [] );
+	register_setting( PAGE_SLUG, 'h2_brand_image', [] );
 
 	add_filter( 'pre_update_site_option_h2_default_private', __NAMESPACE__ . '\\sanitize_checkbox_value' );
 	add_filter( 'pre_update_site_option_h2_default_theme', __NAMESPACE__ . '\\sanitize_checkbox_value' );
@@ -38,6 +40,7 @@ function register_settings() {
 	add_filter( 'pre_update_site_option_h2_allow_listing_users', __NAMESPACE__ . '\\sanitize_checkbox_value' );
 	add_filter( 'pre_update_site_option_h2_allow_comment_html', __NAMESPACE__ . '\\sanitize_checkbox_value' );
 	add_filter( 'pre_update_site_option_h2_link_anonymizer', 'sanitize_text_field' );
+	add_filter( 'pre_update_site_option_h2_brand_color', 'sanitize_hex_color' );
 }
 
 /**
@@ -97,6 +100,18 @@ function register_admin_page() {
 					'description' => __( 'Overrides user permissions to allow all users to view all other users on a site.', 'h2' ),
 				],
 			],
+		]
+	);
+	add_settings_field(
+		'h2_brand_color',
+		'Theme color',
+		__NAMESPACE__ . '\\render_text_field',
+		PAGE_SLUG,
+		'default',
+		[
+			'option_name' => 'h2_brand_color',
+			'label_for' => 'h2_brand_color',
+			'description' => __( 'Brand color used throughout the UI. Disables the ability to set on a per-site basis.', 'h2' )
 		]
 	);
 	add_settings_field(
@@ -199,6 +214,25 @@ function render_text_field( $args ) {
 			esc_html( $args['description'] )
 		);
 	}
+}
+
+function render_color_field( $args ) {
+	$option = $args['option_name'];
+	$value = get_site_option( $option, '' );
+
+	?>
+	<label>
+		<!-- <span class="screen-reader-text">{{{ data.label }}}</span> -->
+		<input
+			class="h2-network-color"
+			id="<?= esc_attr( $args['label_for'] ) ?>"
+			type="text"
+			maxlength="7"
+			placeholder="#eeeeee"
+			value="<?= esc_attr( $value ) ?>"
+		/>
+	</label>
+	<?php
 }
 
 /**
