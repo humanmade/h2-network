@@ -30,6 +30,20 @@ function get_available_sites() {
 }
 
 /**
+ * Get sites using an H2 theme.
+ *
+ * @param array $site_filter Arguments passed to get_sites().
+ * @param array $themes      Allowed stylesheet names.
+ * @return WP_Site[] List of sites.
+ */
+function get_h2_sites( array $site_filter = [], array $themes = [ 'h2' ] ) {
+	$sites = get_sites( $site_filter );
+	$sites = array_filter( $sites, fn ( $site ) => in_array( get_blog_option( $site->id, 'stylesheet' ), $themes, true ) );
+
+	return array_values( $sites );
+}
+
+/**
  * Sanitize the `h2_sites` option value.
  *
  * @param mixed $value Unsanitized, raw value.
