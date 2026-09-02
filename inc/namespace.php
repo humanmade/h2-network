@@ -14,6 +14,7 @@ function bootstrap() {
 	UI\bootstrap();
 
 	add_action( 'plugins_loaded', __NAMESPACE__ . '\\override_settings' );
+	add_filter( 'h2.script_data', __NAMESPACE__ . '\\add_script_data' );
 }
 
 /**
@@ -198,4 +199,20 @@ function set_comment_filters() {
 		remove_filter( 'pre_comment_content', 'wp_filter_kses' );
 		add_filter( 'pre_comment_content', 'wp_filter_post_kses' );
 	}
+}
+
+/**
+ * Add custom script data to H2.
+ */
+function add_script_data( array $data ) : array {
+	if ( ! is_multisite() ) {
+		$data['network'] = false;
+		return $data;
+	}
+
+	$data['network'] = [
+		'name' => get_network()->site_name,
+		'main_site' => get_network()->site_id,
+	];
+	return $data;
 }
