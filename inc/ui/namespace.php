@@ -30,7 +30,6 @@ function register_settings() {
 	register_setting( PAGE_SLUG, 'h2_allow_comment_html', [] );
 	register_setting( PAGE_SLUG, 'h2_link_anonymizer', [] );
 	register_setting( PAGE_SLUG, 'h2_brand_color', [] );
-	register_setting( PAGE_SLUG, 'h2_brand_image', [] );
 
 	add_filter( 'pre_update_site_option_h2_default_private', __NAMESPACE__ . '\\sanitize_checkbox_value' );
 	add_filter( 'pre_update_site_option_h2_default_theme', __NAMESPACE__ . '\\sanitize_checkbox_value' );
@@ -105,7 +104,7 @@ function register_admin_page() {
 	add_settings_field(
 		'h2_brand_color',
 		'Theme color',
-		__NAMESPACE__ . '\\render_text_field',
+		__NAMESPACE__ . '\\render_color_field',
 		PAGE_SLUG,
 		'default',
 		[
@@ -221,18 +220,25 @@ function render_color_field( $args ) {
 	$value = get_site_option( $option, '' );
 
 	?>
-	<label>
-		<!-- <span class="screen-reader-text">{{{ data.label }}}</span> -->
-		<input
-			class="h2-network-color"
-			id="<?= esc_attr( $args['label_for'] ) ?>"
-			type="text"
-			maxlength="7"
-			placeholder="#eeeeee"
-			value="<?= esc_attr( $value ) ?>"
-		/>
-	</label>
+		<label>
+			<input
+				class="h2-network-color"
+				id="<?= esc_attr( $args['label_for'] ) ?>"
+				name="<?= esc_attr( $option ) ?>"
+				type="text"
+				maxlength="7"
+				placeholder="#eeeeee"
+				value="<?= esc_attr( $value ) ?>"
+			/>
+		</label>
 	<?php
+
+	if ( isset( $args['description'] ) ) {
+		printf(
+			'<p class="description">%s</p>',
+			esc_html( $args['description'] )
+		);
+	}
 }
 
 /**

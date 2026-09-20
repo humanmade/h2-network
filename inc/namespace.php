@@ -14,6 +14,7 @@ function bootstrap() {
 	UI\bootstrap();
 
 	add_action( 'plugins_loaded', __NAMESPACE__ . '\\override_settings' );
+	add_filter( 'h2_brand_color', __NAMESPACE__ . '\\override_brand_color' );
 	add_filter( 'h2.script_data', __NAMESPACE__ . '\\add_script_data' );
 }
 
@@ -199,6 +200,13 @@ function set_comment_filters() {
 		remove_filter( 'pre_comment_content', 'wp_filter_kses' );
 		add_filter( 'pre_comment_content', 'wp_filter_post_kses' );
 	}
+}
+
+/**
+ * Apply the network-wide brand color when one is configured.
+ */
+function override_brand_color( string $color ) : string {
+	return get_site_option( 'h2_brand_color' ) ?: $color;
 }
 
 /**
