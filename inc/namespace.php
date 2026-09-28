@@ -11,6 +11,7 @@ function bootstrap() {
 	API\bootstrap();
 	Comments\bootstrap();
 	Privacy\bootstrap();
+	Search\bootstrap();
 	UI\bootstrap();
 
 	add_action( 'plugins_loaded', __NAMESPACE__ . '\\override_settings' );
