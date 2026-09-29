@@ -2,6 +2,7 @@
 
 namespace H2\Network;
 
+use WP_Customize_Manager;
 use WP_User_Query;
 
 /**
@@ -15,6 +16,9 @@ function bootstrap() {
 	UI\bootstrap();
 
 	add_action( 'plugins_loaded', __NAMESPACE__ . '\\override_settings' );
+	add_action( 'customize_register', __NAMESPACE__ . '\\remove_brand_color_control', 20 );
+	add_filter( 'h2_brand_color', __NAMESPACE__ . '\\override_brand_color' );
+	add_filter( 'h2.script_data', __NAMESPACE__ . '\\add_script_data' );
 }
 
 /**
@@ -199,4 +203,38 @@ function set_comment_filters() {
 		remove_filter( 'pre_comment_content', 'wp_filter_kses' );
 		add_filter( 'pre_comment_content', 'wp_filter_post_kses' );
 	}
+}
+
+/**
+ * Bridge the network-wide brand color option into H2's brand color filter.
+ */
+function override_brand_color( string $color ) : string {
+	return get_site_option( 'h2_brand_color' ) ?: $color;
+}
+
+/**
+ * Hide H2's per-site brand color control when the network controls the value.
+ */
+function remove_brand_color_control( WP_Customize_Manager $wp_customize ) : void {
+	if ( ! get_site_option( 'h2_brand_color' ) ) {
+		return;
+	}
+
+	$wp_customize->remove_control( 'h2_brand_color' );
+}
+
+/**
+ * Add custom script data to H2.
+ */
+function add_script_data( array $data ) : array {
+	if ( ! is_multisite() ) {
+		$data['network'] = false;
+		return $data;
+	}
+
+	$data['network'] = [
+		'name' => get_network()->site_name,
+		'main_site' => get_network()->site_id,
+	];
+	return $data;
 }
