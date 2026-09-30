@@ -19,6 +19,20 @@ class Query {
 	public string $search = '';
 
 	/**
+	 * Match any term (discovery), or require all terms.
+	 *
+	 * @var string One of 'any' or 'all'.
+	 */
+	public string $match = 'any';
+
+	/**
+	 * Search the site switcher, or all accessible H2 sites on the network.
+	 *
+	 * @var string One of 'active' or 'network'.
+	 */
+	public string $scope = 'active';
+
+	/**
 	 * IDs of the sites to search.
 	 *
 	 * Empty to search every site available to the current user. Sites the

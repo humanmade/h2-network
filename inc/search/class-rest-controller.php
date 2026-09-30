@@ -98,7 +98,14 @@ class REST_Controller extends WP_REST_Controller {
 			$items[] = $this->prepare_response_for_collection( $item );
 		}
 
-		$response = rest_ensure_response( $items );
+		$data = $request['include_coverage'] ? [
+			'results' => $items,
+			'total' => $total,
+			'total_exact' => $results['total_exact'],
+			'next_page' => $results['next_page'],
+			'coverage' => $results['coverage'],
+		] : $items;
+		$response = rest_ensure_response( $data );
 		$response->header( 'X-WP-Total', (string) $total );
 		$response->header( 'X-WP-TotalPages', (string) $max_pages );
 
@@ -114,6 +121,8 @@ class REST_Controller extends WP_REST_Controller {
 	protected function prepare_query( WP_REST_Request $request ) {
 		$query = new Query();
 		$query->search = trim( $request['search'] );
+		$query->scope = $request['scope'];
+		$query->match = $request['match'];
 		$query->sites = array_map( 'intval', $request['sites'] );
 		$query->types = $request['type'];
 		$query->author = $request['author'] ? (int) $request['author'] : null;
@@ -136,7 +145,7 @@ class REST_Controller extends WP_REST_Controller {
 			);
 		}
 
-		$searchable = get_searchable_sites();
+		$searchable = get_searchable_sites( $query->scope );
 		foreach ( $query->sites as $site_id ) {
 			if ( ! isset( $searchable[ $site_id ] ) ) {
 				return new WP_Error(
@@ -395,7 +404,25 @@ class REST_Controller extends WP_REST_Controller {
 				'description' => __( 'Text to search for.', 'h2' ),
 				'type' => 'string',
 				'required' => true,
+				'maxLength' => 200,
 				'validate_callback' => [ $this, 'validate_search' ],
+			],
+			'scope' => [
+				'description' => __( 'Search the site switcher, or all accessible nonarchived H2 sites.', 'h2' ),
+				'type' => 'string',
+				'enum' => [ 'active', 'network' ],
+				'default' => 'active',
+			],
+			'match' => [
+				'description' => __( 'Match any search term, or require all terms without fuzzy matching.', 'h2' ),
+				'type' => 'string',
+				'enum' => [ 'any', 'all' ],
+				'default' => 'any',
+			],
+			'include_coverage' => [
+				'description' => __( 'Return results in an envelope with search coverage and the next page.', 'h2' ),
+				'type' => 'boolean',
+				'default' => false,
 			],
 			'sites' => [
 				'description' => __( 'Limit results to these sites. Defaults to every site the current user can access.', 'h2' ),

@@ -85,20 +85,33 @@ function activate_comments_feature( $active, $settings, $feature ) {
  * Defaults to the sites shown in the site switcher which the current user can
  * access: public sites, plus any the user is a member of.
  *
+ * @param string $scope 'active' for the site switcher, or 'network' for H2 sites.
  * @return WP_Site[] Sites, keyed by ID.
  */
-function get_searchable_sites() : array {
-	$sites = Network\get_active_sites( true );
+function get_searchable_sites( string $scope = 'active' ) : array {
+	$sites = $scope === 'network' ? Network\get_h2_sites( [
+		'number' => 0,
+		'archived' => false,
+		'deleted' => false,
+		'spam' => false,
+		'mature' => false,
+	] ) : Network\get_active_sites( true );
 
 	/**
 	 * Filter the sites the current user is allowed to search.
 	 *
-	 * @param WP_Site[] $sites Sites the current user can search.
+	 * @param WP_Site[] $sites Candidate sites to search. Access is checked after filtering.
+	 * @param string    $scope Requested site scope.
 	 */
-	$sites = apply_filters( 'h2_network_searchable_sites', $sites );
+	$sites = apply_filters( 'h2_network_searchable_sites', $sites, $scope );
 
 	$keyed = [];
 	foreach ( $sites as $site ) {
+		// Extensions may add sites, but cannot bypass access or site status.
+		if ( ! $site instanceof WP_Site || $site->archived || $site->deleted || $site->spam
+			|| ( ! $site->public && ! current_user_can_for_blog( $site->id, 'read' ) ) ) {
+			continue;
+		}
 		$keyed[ (int) $site->id ] = $site;
 	}
 
@@ -194,6 +207,9 @@ function get_types() : array {
  *
  *     @type int      $total   Total number of matching results across all pages.
  *     @type Result[] $results Results for the requested page.
+ *     @type bool     $total_exact Whether the indexed total is exact.
+ *     @type int|null $next_page Next page, including after an empty stale page.
+ *     @type array    $coverage Site/type index coverage and discarded hits.
  * }
  */
 function search( Query $query ) {
@@ -208,12 +224,22 @@ function search( Query $query ) {
 	$empty = [
 		'total' => 0,
 		'results' => [],
+		'total_exact' => true,
+		'next_page' => null,
+		'coverage' => [
+			'site_ids' => [],
+			'searched_site_ids' => [],
+			'missing_indices' => [],
+			'stale_hit_count' => 0,
+			'complete' => true,
+			'result_window_exhausted' => false,
+		],
 	];
 	if ( trim( $query->search ) === '' ) {
 		return $empty;
 	}
 
-	$sites = get_searchable_sites();
+	$sites = get_searchable_sites( $query->scope );
 	if ( ! empty( $query->sites ) ) {
 		$sites = array_intersect_key( $sites, array_flip( $query->sites ) );
 	}
@@ -232,7 +258,21 @@ function search( Query $query ) {
 		return $request;
 	}
 
-	$response = send_request( $request['indices'], $request['body'] );
+	$coverage = get_index_coverage( $request['index_map'], $sites );
+	if ( is_wp_error( $coverage ) ) {
+		return $coverage;
+	}
+	if ( empty( $coverage['searched_site_ids'] ) ) {
+		$empty['coverage'] = $coverage;
+		return $empty;
+	}
+
+	$missing = $coverage['missing_indices'];
+	$indices = array_filter( $request['indices'], function ( $index ) use ( $missing, $request ) {
+		$identity = $request['index_map'][ $index ];
+		return ! in_array( [ 'site_id' => $identity['site'], 'type' => $identity['type'] ], $missing, true );
+	} );
+	$response = send_request( $indices, $request['body'] );
 	if ( is_wp_error( $response ) ) {
 		return $response;
 	}
@@ -242,18 +282,29 @@ function search( Query $query ) {
 		$result = resolve_hit( $hit, $request['index_map'], $types, $sites );
 		if ( $result ) {
 			$results[] = $result;
+		} else {
+			$coverage['stale_hit_count']++;
 		}
 	}
 
 	// Elasticsearch 7+ reports the total as an object.
 	$total = $response['hits']['total'] ?? 0;
+	$total_exact = ! is_array( $total ) || ( $total['relation'] ?? null ) === 'eq';
 	if ( is_array( $total ) ) {
 		$total = $total['value'] ?? 0;
 	}
+	$coverage['complete'] = $coverage['complete'] && $coverage['stale_hit_count'] === 0;
+	$next_offset = $query->get_offset() + $query->per_page;
+	$more_hits = $next_offset < $total || ! $total_exact;
+	$has_next = $more_hits && $next_offset + $query->per_page <= MAX_RESULTS;
+	$coverage['result_window_exhausted'] = $more_hits && ! $has_next;
 
 	return [
 		'total' => (int) $total,
 		'results' => $results,
+		'total_exact' => $total_exact,
+		'next_page' => $has_next ? $query->page + 1 : null,
+		'coverage' => $coverage,
 	];
 }
 
@@ -283,8 +334,7 @@ function build_request( Query $query, array $sites, array $types ) {
 	foreach ( $types as $slug => $type ) {
 		$indexable = $indexables->get( $type['indexable'] );
 		if ( empty( $indexable ) ) {
-			// Indexable isn't registered (e.g. its feature is unavailable).
-			continue;
+			return search_error( __( 'A requested result type is not indexed.', 'h2' ) );
 		}
 
 		foreach ( $sites as $site ) {
@@ -318,6 +368,7 @@ function build_request( Query $query, array $sites, array $types ) {
 	$body = [
 		'from' => $query->get_offset(),
 		'size' => $query->per_page,
+		'track_total_hits' => MAX_RESULTS,
 		// Results are loaded fresh from the database, so only the IDs are needed.
 		'_source' => array_values( array_unique( $source_fields ) ),
 		'query' => [
@@ -375,6 +426,53 @@ function build_request( Query $query, array $sites, array $types ) {
 }
 
 /**
+ * Report which requested site/type indices exist, including index aliases.
+ *
+ * @param array     $index_map Map of requested indices to site/type identities.
+ * @param WP_Site[] $sites     Requested sites, keyed by ID.
+ * @return array|WP_Error Coverage, or an error if it cannot be determined.
+ */
+function get_index_coverage( array $index_map, array $sites ) {
+	$response = Elasticsearch::factory()->remote_request(
+		'_alias',
+		[ 'method' => 'GET' ],
+		[],
+		'query'
+	);
+	if ( is_wp_error( $response ) || (int) wp_remote_retrieve_response_code( $response ) !== 200 ) {
+		return search_error( __( 'Unable to determine search coverage.', 'h2' ) );
+	}
+	$indices = json_decode( wp_remote_retrieve_body( $response ), true );
+	if ( ! is_array( $indices ) ) {
+		return search_error( __( 'Unable to determine search coverage.', 'h2' ) );
+	}
+	$present = [];
+	foreach ( $indices as $index => $data ) {
+		$present[ $index ] = true;
+		foreach ( array_keys( $data['aliases'] ?? [] ) as $alias ) {
+			$present[ $alias ] = true;
+		}
+	}
+	$searched = [];
+	$missing = [];
+	foreach ( $index_map as $index => $identity ) {
+		if ( isset( $present[ $index ] ) ) {
+			$searched[ $identity['site'] ] = true;
+		} else {
+			$missing[] = [ 'site_id' => $identity['site'], 'type' => $identity['type'] ];
+		}
+	}
+	return [
+		'site_ids' => array_keys( $sites ),
+		'searched_site_ids' => array_keys( $searched ),
+		'missing_indices' => $missing,
+		'stale_hit_count' => 0,
+		'complete' => empty( $missing ),
+		'result_window_exhausted' => false,
+	];
+}
+
+/**
  * Send a search request to Elasticsearch.
  *
  * Uses the Multi Search API rather than a plain search, as it accepts the
@@ -389,8 +487,8 @@ function build_request( Query $query, array $sites, array $types ) {
 function send_request( array $indices, array $body ) {
 	$header = [
 		'index' => array_values( array_unique( $indices ) ),
-		// Sites which have never been indexed have no index yet.
-		'ignore_unavailable' => true,
+		// Coverage is checked separately; don't silently lose indices mid-request.
+		'ignore_unavailable' => false,
 		// Use global term statistics, so that scores are comparable across
 		// indices of very different sizes.
 		'search_type' => 'dfs_query_then_fetch',
@@ -419,7 +517,10 @@ function send_request( array $indices, array $body ) {
 	$failed = (int) wp_remote_retrieve_response_code( $response ) !== 200
 		|| ! is_array( $result )
 		|| ! empty( $result['error'] )
-		|| ! isset( $result['hits'] );
+		|| ! is_array( $result['hits']['hits'] ?? null )
+		|| ! isset( $result['hits']['total'] )
+		|| ! empty( $result['timed_out'] )
+		|| ! empty( $result['_shards']['failed'] );
 	if ( $failed ) {
 		$error = $result['error'] ?? $data['error'] ?? null;
 		$details = is_array( $error ) ? ( $error['reason'] ?? $error['type'] ?? null ) : $error;
@@ -587,7 +688,7 @@ function build_comment_query( Query $query ) : array {
  * @return array Elasticsearch query clauses, at least one of which must match.
  */
 function build_match_clauses( Query $query, array $fields ) : array {
-	return [
+	$clauses = [
 		[
 			'multi_match' => [
 				'query' => $query->search,
@@ -614,6 +715,11 @@ function build_match_clauses( Query $query, array $fields ) : array {
 			],
 		],
 	];
+	if ( $query->match === 'all' ) {
+		// Retain phrase/all-term ranking, without broad fuzzy matches.
+		array_pop( $clauses );
+	}
+	return $clauses;
 }
 
 /**
