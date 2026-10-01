@@ -235,5 +235,11 @@ function add_script_data( array $data ) : array {
 		'name' => get_network()->site_name,
 		'main_site' => get_network()->site_id,
 	];
+
+	// Use the network's Mapbox key, unless one is already set via constant.
+	if ( empty( $data['site']['mapbox_key'] ) ) {
+		$data['site']['mapbox_key'] = get_site_option( 'h2_mapbox_key' ) ?: null;
+	}
+
 	return $data;
 }
