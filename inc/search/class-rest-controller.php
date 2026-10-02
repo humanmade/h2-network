@@ -213,24 +213,21 @@ class REST_Controller extends WP_REST_Controller {
 		switch_to_blog( $item->site->id );
 
 		$data = [
-			'id' => 0,
 			'type' => $item->type,
 			'site' => $this->prepare_site( $item->site ),
+			'score' => $item->score,
+			'highlight' => (object) $item->highlight,
+			'result' => null,
 		];
 		if ( $item->object instanceof WP_Post ) {
-			$data = array_merge( $data, $this->prepare_post( $item->object ) );
+			$data['result'] = $this->prepare_post( $item->object );
 		} elseif ( $item->object instanceof WP_Comment ) {
-			$data = array_merge( $data, $this->prepare_comment( $item->object ) );
+			$data['result'] = $this->prepare_comment( $item->object );
 		}
-		$data['score'] = $item->score;
-		$data['highlight'] = (object) $item->highlight;
-
-		$links = $this->prepare_links( $item );
 
 		restore_current_blog();
 
 		$response = rest_ensure_response( $data );
-		$response->add_links( $links );
 
 		/**
 		 * Filter a search result prepared for the REST API.
@@ -245,7 +242,8 @@ class REST_Controller extends WP_REST_Controller {
 	/**
 	 * Prepare a post result.
 	 *
-	 * Must be called with the post's site switched to.
+	 * Uses the shape of the posts endpoint (`wp/v2/posts`), with the author
+	 * embedded. Must be called with the post's site switched to.
 	 *
 	 * @param WP_Post $post Post to prepare.
 	 * @return array
@@ -254,62 +252,104 @@ class REST_Controller extends WP_REST_Controller {
 		/** This filter is documented in wp-includes/post-template.php */
 		$excerpt = apply_filters( 'get_the_excerpt', $post->post_excerpt, $post );
 
-		return [
+		$data = [
 			'id' => (int) $post->ID,
-			'title' => get_the_title( $post ),
-			/** This filter is documented in wp-includes/post-template.php */
-			'excerpt' => apply_filters( 'the_excerpt', $excerpt ),
-			'link' => get_permalink( $post ),
 			'date' => mysql_to_rfc3339( $post->post_date ),
 			'date_gmt' => mysql_to_rfc3339( $post->post_date_gmt ),
-			'author' => $this->prepare_user( get_userdata( (int) $post->post_author ) ),
+			'link' => get_permalink( $post ),
+			'title' => [
+				'rendered' => get_the_title( $post ),
+			],
+			'excerpt' => [
+				/** This filter is documented in wp-includes/post-template.php */
+				'rendered' => apply_filters( 'the_excerpt', $excerpt ),
+			],
+			'author' => (int) $post->post_author,
 		];
+
+		$embedded = [];
+		$author = $this->prepare_user( get_userdata( (int) $post->post_author ) );
+		if ( $author ) {
+			$embedded['author'] = [ $author ];
+		}
+
+		return $this->add_links_and_embeds( $data, $this->prepare_links( $post ), $embedded );
 	}
 
 	/**
 	 * Prepare a comment result.
 	 *
-	 * Must be called with the comment's site switched to.
+	 * Uses the shape of the comments endpoint (`wp/v2/comments`), with the
+	 * author and the post commented on embedded. Must be called with the
+	 * comment's site switched to.
 	 *
 	 * @param WP_Comment $comment Comment to prepare.
 	 * @return array
 	 */
 	protected function prepare_comment( WP_Comment $comment ) : array {
+		$data = [
+			'id' => (int) $comment->comment_ID,
+			'post' => (int) $comment->comment_post_ID,
+			'author' => (int) $comment->user_id,
+			'author_name' => $comment->comment_author,
+			'date' => mysql_to_rfc3339( $comment->comment_date ),
+			'date_gmt' => mysql_to_rfc3339( $comment->comment_date_gmt ),
+			'content' => [
+				/** This filter is documented in wp-includes/comment-template.php */
+				'rendered' => apply_filters( 'comment_text', $comment->comment_content, $comment, [] ),
+			],
+			'link' => get_comment_link( $comment ),
+			'author_avatar_urls' => rest_get_avatar_urls( $comment ),
+		];
+
+		$embedded = [];
+		$author = $comment->user_id ? $this->prepare_user( get_userdata( (int) $comment->user_id ) ) : null;
+		if ( $author ) {
+			$embedded['author'] = [ $author ];
+		}
+
 		$post = get_post( $comment->comment_post_ID );
-
-		/** This filter is documented in wp-includes/comment-template.php */
-		$content = apply_filters( 'comment_text', $comment->comment_content, $comment, [] );
-
-		if ( $comment->user_id ) {
-			$author = $this->prepare_user( get_userdata( (int) $comment->user_id ) );
-		} else {
-			$author = [
-				'id' => 0,
-				'name' => $comment->comment_author,
-				'slug' => null,
-				'link' => null,
-				'avatar_urls' => rest_get_avatar_urls( $comment ),
+		if ( $post ) {
+			$embedded['up'] = [
+				[
+					'id' => (int) $post->ID,
+					'link' => get_permalink( $post ),
+					'title' => [
+						'rendered' => get_the_title( $post ),
+					],
+				],
 			];
 		}
 
-		return [
-			'id' => (int) $comment->comment_ID,
-			'title' => $post ? get_the_title( $post ) : '',
-			'excerpt' => wpautop( wp_trim_words( $content, 55 ) ),
-			'link' => get_comment_link( $comment ),
-			'date' => mysql_to_rfc3339( $comment->comment_date ),
-			'date_gmt' => mysql_to_rfc3339( $comment->comment_date_gmt ),
-			'author' => $author,
-			'post' => $post ? [
-				'id' => (int) $post->ID,
-				'title' => get_the_title( $post ),
-				'link' => get_permalink( $post ),
-			] : null,
-		];
+		return $this->add_links_and_embeds( $data, $this->prepare_links( $comment ), $embedded );
+	}
+
+	/**
+	 * Add links and embedded objects to a prepared post or comment.
+	 *
+	 * These are added in the same format the REST API server uses for
+	 * top-level responses, as the server only handles those itself.
+	 *
+	 * @param array $data     Prepared post or comment.
+	 * @param array $links    Links, keyed by relation.
+	 * @param array $embedded Lists of embedded objects, keyed by relation.
+	 * @return array
+	 */
+	protected function add_links_and_embeds( array $data, array $links, array $embedded ) : array {
+		if ( $links ) {
+			$data['_links'] = array_map( fn ( array $link ) => [ $link ], $links );
+		}
+		if ( $embedded ) {
+			$data['_embedded'] = $embedded;
+		}
+
+		return $data;
 	}
 
 	/**
 	 * Prepare a user for the response.
+	 *
+	 * Uses the shape of the users endpoint (`wp/v2/users`).
 	 *
 	 * @param WP_User|false $user User to prepare.
 	 * @return array|null User data, or null if the user no longer exists.
@@ -346,31 +386,31 @@ class REST_Controller extends WP_REST_Controller {
 	}
 
 	/**
-	 * Prepare links for a result.
+	 * Prepare links for a post or comment.
 	 *
-	 * Links point to the canonical REST API resources on the result's site.
-	 * Must be called with the result's site switched to.
+	 * Links point to the canonical REST API resources on the object's site.
+	 * Must be called with the object's site switched to.
 	 *
-	 * @param Result $result Search result.
+	 * @param WP_Post|WP_Comment $object Post or comment.
 	 * @return array Links, keyed by relation.
 	 */
-	protected function prepare_links( Result $result ) : array {
-		$site_id = (int) $result->site->id;
+	protected function prepare_links( $object ) : array {
+		$site_id = get_current_blog_id();
 		$links = [];
 
-		if ( $result->object instanceof WP_Post ) {
-			$route = rest_get_route_for_post( $result->object );
+		if ( $object instanceof WP_Post ) {
+			$route = rest_get_route_for_post( $object );
 			if ( $route ) {
 				$links['self'] = [
 					'href' => get_rest_url( $site_id, $route ),
 				];
 			}
-		} elseif ( $result->object instanceof WP_Comment ) {
+		} elseif ( $object instanceof WP_Comment ) {
 			$links['self'] = [
-				'href' => get_rest_url( $site_id, sprintf( 'wp/v2/comments/%d', $result->object->comment_ID ) ),
+				'href' => get_rest_url( $site_id, sprintf( 'wp/v2/comments/%d', $object->comment_ID ) ),
 			];
 
-			$post = get_post( $result->object->comment_post_ID );
+			$post = get_post( $object->comment_post_ID );
 			$route = $post ? rest_get_route_for_post( $post ) : '';
 			if ( $route ) {
 				$links['up'] = [
@@ -467,11 +507,25 @@ class REST_Controller extends WP_REST_Controller {
 			return $this->add_additional_fields_schema( $this->schema );
 		}
 
+		$rendered_schema = [
+			'type' => 'object',
+			'properties' => [
+				'rendered' => [
+					'type' => 'string',
+				],
+			],
+		];
+
+		$date_schema = [
+			'type' => 'string',
+			'format' => 'date-time',
+		];
+
 		$user_schema = [
-			'type' => [ 'object', 'null' ],
+			'type' => 'object',
 			'properties' => [
 				'id' => [
-					'description' => __( 'User ID, or 0 for a guest.', 'h2' ),
+					'description' => __( 'User ID.', 'h2' ),
 					'type' => 'integer',
 				],
 				'name' => [
@@ -480,11 +534,11 @@ class REST_Controller extends WP_REST_Controller {
 				],
 				'slug' => [
 					'description' => __( 'User slug.', 'h2' ),
-					'type' => [ 'string', 'null' ],
+					'type' => 'string',
 				],
 				'link' => [
 					'description' => __( 'URL of the author archive on the result\'s site.', 'h2' ),
-					'type' => [ 'string', 'null' ],
+					'type' => 'string',
 					'format' => 'uri',
 				],
 				'avatar_urls' => [
@@ -494,16 +548,125 @@ class REST_Controller extends WP_REST_Controller {
 			],
 		];
 
+		$post_schema = [
+			'title' => 'post',
+			'description' => __( 'Post, in the shape of the posts endpoint.', 'h2' ),
+			'type' => 'object',
+			'properties' => [
+				'id' => [
+					'description' => __( 'ID of the post on its site.', 'h2' ),
+					'type' => 'integer',
+				],
+				'date' => array_merge( $date_schema, [
+					'description' => __( 'Publication date, in the timezone of the site.', 'h2' ),
+				] ),
+				'date_gmt' => array_merge( $date_schema, [
+					'description' => __( 'Publication date, as GMT.', 'h2' ),
+				] ),
+				'link' => [
+					'description' => __( 'URL of the post.', 'h2' ),
+					'type' => 'string',
+					'format' => 'uri',
+				],
+				'title' => array_merge( $rendered_schema, [
+					'description' => __( 'Title of the post.', 'h2' ),
+				] ),
+				'excerpt' => array_merge( $rendered_schema, [
+					'description' => __( 'HTML excerpt of the post.', 'h2' ),
+				] ),
+				'author' => [
+					'description' => __( 'ID of the author.', 'h2' ),
+					'type' => 'integer',
+				],
+				'_embedded' => [
+					'description' => __( 'Embedded objects, keyed by relation.', 'h2' ),
+					'type' => 'object',
+					'properties' => [
+						'author' => [
+							'description' => __( 'Author of the post. Omitted if the user no longer exists.', 'h2' ),
+							'type' => 'array',
+							'items' => $user_schema,
+						],
+					],
+				],
+			],
+		];
+
+		$comment_schema = [
+			'title' => 'comment',
+			'description' => __( 'Comment, in the shape of the comments endpoint.', 'h2' ),
+			'type' => 'object',
+			'properties' => [
+				'id' => [
+					'description' => __( 'ID of the comment on its site.', 'h2' ),
+					'type' => 'integer',
+				],
+				'post' => [
+					'description' => __( 'ID of the post commented on.', 'h2' ),
+					'type' => 'integer',
+				],
+				'author' => [
+					'description' => __( 'ID of the author, or 0 for a guest.', 'h2' ),
+					'type' => 'integer',
+				],
+				'author_name' => [
+					'description' => __( 'Display name of the author.', 'h2' ),
+					'type' => 'string',
+				],
+				'date' => array_merge( $date_schema, [
+					'description' => __( 'Publication date, in the timezone of the site.', 'h2' ),
+				] ),
+				'date_gmt' => array_merge( $date_schema, [
+					'description' => __( 'Publication date, as GMT.', 'h2' ),
+				] ),
+				'content' => array_merge( $rendered_schema, [
+					'description' => __( 'HTML content of the comment.', 'h2' ),
+				] ),
+				'link' => [
+					'description' => __( 'URL of the comment.', 'h2' ),
+					'type' => 'string',
+					'format' => 'uri',
+				],
+				'author_avatar_urls' => [
+					'description' => __( 'Avatar URLs for the author, keyed by size.', 'h2' ),
+					'type' => 'object',
+				],
+				'_embedded' => [
+					'description' => __( 'Embedded objects, keyed by relation.', 'h2' ),
+					'type' => 'object',
+					'properties' => [
+						'author' => [
+							'description' => __( 'Author of the comment. Omitted for guests.', 'h2' ),
+							'type' => 'array',
+							'items' => $user_schema,
+						],
+						'up' => [
+							'description' => __( 'Post commented on. Omitted if the post no longer exists.', 'h2' ),
+							'type' => 'array',
+							'items' => [
+								'type' => 'object',
+								'properties' => [
+									'id' => [
+										'type' => 'integer',
+									],
+									'link' => [
+										'type' => 'string',
+										'format' => 'uri',
+									],
+									'title' => $rendered_schema,
+								],
+							],
+						],
+					],
+				],
+			],
+		];
+
 		$this->schema = [
 			'$schema' => 'http://json-schema.org/draft-04/schema#',
 			'title' => 'h2-search-result',
 			'type' => 'object',
 			'properties' => [
-				'id' => [
-					'description' => __( 'ID of the result on its site. Only unique in combination with the type and site.', 'h2' ),
-					'type' => 'integer',
-					'readonly' => true,
-				],
 				'type' => [
 					'description' => __( 'Type of result.', 'h2' ),
 					'type' => 'string',
@@ -527,55 +690,6 @@ class REST_Controller extends WP_REST_Controller {
 						],
 					],
 				],
-				'title' => [
-					'description' => __( 'Title of the result. For comments, the title of the post commented on.', 'h2' ),
-					'type' => 'string',
-					'readonly' => true,
-				],
-				'excerpt' => [
-					'description' => __( 'HTML excerpt of the result.', 'h2' ),
-					'type' => 'string',
-					'readonly' => true,
-				],
-				'link' => [
-					'description' => __( 'URL of the result.', 'h2' ),
-					'type' => 'string',
-					'format' => 'uri',
-					'readonly' => true,
-				],
-				'date' => [
-					'description' => __( 'Publication date, in the timezone of the site.', 'h2' ),
-					'type' => 'string',
-					'format' => 'date-time',
-					'readonly' => true,
-				],
-				'date_gmt' => [
-					'description' => __( 'Publication date, as GMT.', 'h2' ),
-					'type' => 'string',
-					'format' => 'date-time',
-					'readonly' => true,
-				],
-				'author' => array_merge( $user_schema, [
-					'description' => __( 'Author of the result.', 'h2' ),
-					'readonly' => true,
-				] ),
-				'post' => [
-					'description' => __( 'Post commented on. Only present for comment results.', 'h2' ),
-					'type' => [ 'object', 'null' ],
-					'readonly' => true,
-					'properties' => [
-						'id' => [
-							'type' => 'integer',
-						],
-						'title' => [
-							'type' => 'string',
-						],
-						'link' => [
-							'type' => 'string',
-							'format' => 'uri',
-						],
-					],
-				],
 				'score' => [
 					'description' => __( 'Relevance score. Null when not ordered by relevance.', 'h2' ),
 					'type' => [ 'number', 'null' ],
@@ -590,6 +704,15 @@ class REST_Controller extends WP_REST_Controller {
 						'items' => [
 							'type' => 'string',
 						],
+					],
+				],
+				'result' => [
+					'description' => __( 'The post or comment, in the shape of its regular REST API endpoint. Its ID is only unique in combination with the type and site.', 'h2' ),
+					'type' => 'object',
+					'readonly' => true,
+					'oneOf' => [
+						$post_schema,
+						$comment_schema,
 					],
 				],
 			],
