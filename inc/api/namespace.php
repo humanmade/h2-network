@@ -8,6 +8,8 @@ use WP_REST_Response;
 use WP_REST_Server;
 use WP_Site;
 
+const API_NAMESPACE = 'h2/v1';
+
 function bootstrap() {
 	add_action( 'rest_api_init', __NAMESPACE__ . '\\register_rest_routes' );
 }
@@ -16,7 +18,7 @@ function bootstrap() {
  * Register REST API routes for the site switcher.
  */
 function register_rest_routes() {
-	register_rest_route( 'h2/v1', 'site-switcher/sites', [
+	register_rest_route( API_NAMESPACE, 'site-switcher/sites', [
 		'methods' => WP_REST_Server::READABLE,
 		'callback' => __NAMESPACE__ . '\\get_sites_for_api',
 		'permission_callback' => '__return_true',

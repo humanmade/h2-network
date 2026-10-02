@@ -12,12 +12,20 @@ function bootstrap() {
 	API\bootstrap();
 	Comments\bootstrap();
 	Privacy\bootstrap();
+	Search\bootstrap();
 	UI\bootstrap();
 
 	add_action( 'plugins_loaded', __NAMESPACE__ . '\\override_settings' );
 	add_action( 'customize_register', __NAMESPACE__ . '\\remove_brand_color_control', 20 );
 	add_filter( 'h2_brand_color', __NAMESPACE__ . '\\override_brand_color' );
 	add_filter( 'h2.script_data', __NAMESPACE__ . '\\add_script_data' );
+}
+
+/**
+ * Is this a H2 site?
+ */
+function is_h2() : bool {
+	return apply_filters( 'h2.network.is_h2', get_stylesheet() === 'h2' );
 }
 
 /**
@@ -116,8 +124,7 @@ function override_settings() {
 	}
 
 	// Only apply on H2 sites.
-	$theme = get_stylesheet();
-	if ( $theme !== 'h2' ) {
+	if ( ! is_h2() ) {
 		return;
 	}
 
