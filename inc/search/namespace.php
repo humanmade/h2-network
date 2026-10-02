@@ -886,6 +886,8 @@ function prepare_highlight( array $highlight, array $config ) : array {
 function sanitize_highlight_fragment( string $fragment ) : string {
 	// Drop the tail of any comment (e.g. a block delimiter) cut off at the start.
 	$text = preg_replace( '/^[^<]*?-->/', '', $fragment );
+	// Drop a quoted attribute tail when the fragment starts inside an HTML tag.
+	$text = preg_replace( '/^[^<>]*[\'"]>/', '', $text );
 	$text = wp_strip_all_tags( $text, true );
 	$text = esc_html( trim( $text ) );
 
