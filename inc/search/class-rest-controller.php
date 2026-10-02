@@ -33,7 +33,7 @@ class REST_Controller extends WP_REST_Controller {
 	 * Constructor.
 	 */
 	public function __construct() {
-		$this->namespace = 'h2/v1';
+		$this->namespace = API\API_NAMESPACE;
 		$this->rest_base = 'search';
 	}
 
