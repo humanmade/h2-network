@@ -839,13 +839,14 @@ function resolve_comment( array $source, WP_Site $site ) : ?WP_Comment {
 /**
  * Check whether a post can be shown in search results.
  *
- * The index may be stale, so this mirrors the conditions in the query.
+ * This protects against a stale index, and ensures the current user can
+ * actually access the post (either it's published, or they have the caps).
  *
  * @param WP_Post $post Post to check.
  * @return bool
  */
 function is_post_visible( WP_Post $post ) : bool {
-	return $post->post_status === 'publish'
+	return ( 'publish' === $post->post_status || current_user_can( 'read_post', $post->ID ) )
 		&& empty( $post->post_password )
 		&& in_array( $post->post_type, get_searchable_post_types(), true );
 }
