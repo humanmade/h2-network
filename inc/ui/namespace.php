@@ -30,6 +30,7 @@ function register_settings() {
 	register_setting( PAGE_SLUG, 'h2_allow_comment_html', [] );
 	register_setting( PAGE_SLUG, 'h2_link_anonymizer', [] );
 	register_setting( PAGE_SLUG, 'h2_brand_color', [] );
+	register_setting( PAGE_SLUG, 'h2_mapbox_key', [] );
 
 	add_filter( 'pre_update_site_option_h2_default_private', __NAMESPACE__ . '\\sanitize_checkbox_value' );
 	add_filter( 'pre_update_site_option_h2_default_theme', __NAMESPACE__ . '\\sanitize_checkbox_value' );
@@ -40,6 +41,7 @@ function register_settings() {
 	add_filter( 'pre_update_site_option_h2_allow_comment_html', __NAMESPACE__ . '\\sanitize_checkbox_value' );
 	add_filter( 'pre_update_site_option_h2_link_anonymizer', 'sanitize_text_field' );
 	add_filter( 'pre_update_site_option_h2_brand_color', 'sanitize_hex_color' );
+	add_filter( 'pre_update_site_option_h2_mapbox_key', 'sanitize_text_field' );
 }
 
 /**
@@ -124,6 +126,21 @@ function register_admin_page() {
 			'label_for' => 'h2_link_anonymizer',
 			'description' => __( 'Set the URL for a link anonymizer. All external links will pass via this. %s will be replaced with the external URL.', 'h2' ),
 			'placeholder' => 'https://href.li/?%s',
+		]
+	);
+	add_settings_field(
+		'h2_mapbox_key',
+		'Mapbox API key',
+		__NAMESPACE__ . '\\render_text_field',
+		PAGE_SLUG,
+		'default',
+		[
+			'option_name' => 'h2_mapbox_key',
+			'label_for' => 'h2_mapbox_key',
+			'description' => defined( 'MAPBOX_KEY' )
+				? __( 'The MAPBOX_KEY constant is defined, and will be used instead of this setting.', 'h2' )
+				: __( 'Public access token used to display maps in user hovercards.', 'h2' ),
+			'placeholder' => 'pk.…',
 		]
 	);
 	add_settings_field(
