@@ -256,6 +256,7 @@ class REST_Controller extends WP_REST_Controller {
 			'id' => (int) $post->ID,
 			'date' => mysql_to_rfc3339( $post->post_date ),
 			'date_gmt' => mysql_to_rfc3339( $post->post_date_gmt ),
+			'type' => $post->post_type,
 			'link' => get_permalink( $post ),
 			'title' => [
 				'rendered' => get_the_title( $post ),
@@ -563,6 +564,10 @@ class REST_Controller extends WP_REST_Controller {
 				'date_gmt' => array_merge( $date_schema, [
 					'description' => __( 'Publication date, as GMT.', 'h2' ),
 				] ),
+				'type' => [
+					'description' => __( 'Post type.', 'h2' ),
+					'type' => 'string',
+				],
 				'link' => [
 					'description' => __( 'URL of the post.', 'h2' ),
 					'type' => 'string',
