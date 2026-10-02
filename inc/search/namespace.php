@@ -2,9 +2,7 @@
 /**
  * Network-wide ("universal") search.
  *
- * Searches every H2 site on the network in a single request by querying the
- * ElasticPress indices for all of the sites at once. Hits are then resolved
- * back to the WordPress objects they represent on their own sites.
+ * Requires ElasticPress.
  */
 
 namespace H2\Network\Search;
@@ -36,7 +34,7 @@ const HIGHLIGHT_START = "\u{E000}";
 const HIGHLIGHT_END = "\u{E001}";
 
 /**
- * Bootstrap search functionality.
+ * Bootstrap.
  */
 function bootstrap() : void {
 	add_action( 'rest_api_init', __NAMESPACE__ . '\\register_rest_routes' );
@@ -394,8 +392,11 @@ function build_request( Query $query, array $sites, array $types ) {
 function send_request( array $indices, array $body ) {
 	$header = [
 		'index' => array_values( array_unique( $indices ) ),
-		// Sites which have never been indexed have no index yet.
+
+		// Sites which have never been indexed have no index yet, but we don't
+		// want to crash the query.
 		'ignore_unavailable' => true,
+
 		// Use global term statistics, so that scores are comparable across
 		// indices of very different sizes.
 		'search_type' => 'dfs_query_then_fetch',
