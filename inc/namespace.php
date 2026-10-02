@@ -22,6 +22,13 @@ function bootstrap() {
 }
 
 /**
+ * Is this a H2 site?
+ */
+function is_h2() : bool {
+	return apply_filters( 'h2.network.is_h2', get_stylesheet() === 'h2' );
+}
+
+/**
  * Get sites that can be activated.
  *
  * @return WP_Site[] List of sites on the network.
@@ -117,8 +124,7 @@ function override_settings() {
 	}
 
 	// Only apply on H2 sites.
-	$theme = get_stylesheet();
-	if ( $theme !== 'h2' ) {
+	if ( ! is_h2() ) {
 		return;
 	}
 

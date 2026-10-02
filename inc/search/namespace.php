@@ -72,6 +72,11 @@ function is_available() : bool {
  * @return bool
  */
 function activate_comments_feature( $active, $settings, $feature ) {
+	// Only apply on H2 sites.
+	if ( ! Network\is_h2() ) {
+		return $active;
+	}
+
 	if ( empty( $feature->slug ) || $feature->slug !== 'comments' ) {
 		return $active;
 	}
