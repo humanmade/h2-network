@@ -12,6 +12,7 @@ use WP_Comment;
 use WP_Error;
 use WP_Post;
 use WP_REST_Controller;
+use WP_REST_Posts_Controller;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_REST_Server;
@@ -220,7 +221,7 @@ class REST_Controller extends WP_REST_Controller {
 			'result' => null,
 		];
 		if ( $item->object instanceof WP_Post ) {
-			$data['result'] = $this->prepare_post( $item->object );
+			$data['result'] = $this->prepare_post( $item->object, (bool) $request['include_content'] );
 		} elseif ( $item->object instanceof WP_Comment ) {
 			$data['result'] = $this->prepare_comment( $item->object );
 		}
@@ -245,10 +246,11 @@ class REST_Controller extends WP_REST_Controller {
 	 * Uses the shape of the posts endpoint (`wp/v2/posts`), with the author
 	 * embedded. Must be called with the post's site switched to.
 	 *
-	 * @param WP_Post $post Post to prepare.
+	 * @param WP_Post $post            Post to prepare.
+	 * @param bool    $include_content Include rendered content and revision metadata.
 	 * @return array
 	 */
-	protected function prepare_post( WP_Post $post ) : array {
+	protected function prepare_post( WP_Post $post, bool $include_content = false ) : array {
 		/** This filter is documented in wp-includes/post-template.php */
 		$excerpt = apply_filters( 'get_the_excerpt', $post->post_excerpt, $post );
 
@@ -267,6 +269,18 @@ class REST_Controller extends WP_REST_Controller {
 			],
 			'author' => (int) $post->post_author,
 		];
+
+		if ( $include_content ) {
+			// Use core's view response so blocks, post context and password handling
+			// match an exact REST read. The search resolver already checked access.
+			$fields = [ 'content', 'modified', 'modified_gmt', 'status' ];
+			$request = new WP_REST_Request( 'GET' );
+			$request->set_param( 'context', 'view' );
+			$request->set_param( '_fields', $fields );
+			$controller = new WP_REST_Posts_Controller( $post->post_type );
+			$response = $controller->prepare_item_for_response( $post, $request );
+			$data = array_merge( $data, array_intersect_key( $response->get_data(), array_flip( $fields ) ) );
+		}
 
 		$embedded = [];
 		$author = $this->prepare_user( get_userdata( (int) $post->post_author ) );
@@ -495,6 +509,11 @@ class REST_Controller extends WP_REST_Controller {
 				'minimum' => 1,
 				'maximum' => 100,
 			],
+			'include_content' => [
+				'description' => __( 'Include full rendered post content, protection state, modification dates and publication status. Does not change access or pagination; comments already include their content.', 'h2' ),
+				'type' => 'boolean',
+				'default' => false,
+			],
 		];
 	}
 
@@ -579,6 +598,28 @@ class REST_Controller extends WP_REST_Controller {
 				'excerpt' => array_merge( $rendered_schema, [
 					'description' => __( 'HTML excerpt of the post.', 'h2' ),
 				] ),
+				'content' => [
+					'description' => __( 'Full rendered post content. Only included when include_content is true.', 'h2' ),
+					'type' => 'object',
+					'properties' => [
+						'rendered' => [
+							'type' => 'string',
+						],
+						'protected' => [
+							'type' => 'boolean',
+						],
+					],
+				],
+				'modified' => array_merge( $date_schema, [
+					'description' => __( 'Modification date, in the timezone of the site. Only included when include_content is true.', 'h2' ),
+				] ),
+				'modified_gmt' => array_merge( $date_schema, [
+					'description' => __( 'Modification date, as GMT. Only included when include_content is true.', 'h2' ),
+				] ),
+				'status' => [
+					'description' => __( 'Live publication status. Only included when include_content is true.', 'h2' ),
+					'type' => 'string',
+				],
 				'author' => [
 					'description' => __( 'ID of the author.', 'h2' ),
 					'type' => 'integer',
