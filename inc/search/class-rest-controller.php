@@ -101,6 +101,10 @@ class REST_Controller extends WP_REST_Controller {
 		$response = rest_ensure_response( $items );
 		$response->header( 'X-WP-Total', (string) $total );
 		$response->header( 'X-WP-TotalPages', (string) $max_pages );
+		// Totals describe indexed matches, not current database completeness.
+		$response->header( 'X-H2-Total-Relation', $results['total_relation'] );
+		$response->header( 'X-H2-Search-Sites', implode( ',', $results['sites'] ) );
+		$response->header( 'X-H2-Index-Coverage', 'unknown' );
 
 		return $response;
 	}
@@ -119,7 +123,7 @@ class REST_Controller extends WP_REST_Controller {
 		$query->author = $request['author'] ? (int) $request['author'] : null;
 		$query->after = $this->parse_date( $request['after'] );
 		$query->before = $this->parse_date( $request['before'] );
-		$query->orderby = $request['orderby'];
+		$query->orderby = $request['orderby'] ?? ( $query->search === '*' ? 'date' : 'relevance' );
 		$query->order = $request['order'];
 		$query->page = (int) $request['page'];
 		$query->per_page = (int) $request['per_page'];
@@ -433,7 +437,7 @@ class REST_Controller extends WP_REST_Controller {
 
 		return [
 			'search' => [
-				'description' => __( 'Text to search for.', 'h2' ),
+				'description' => __( 'Text to search for. Use * to match all results within the supplied filters.', 'h2' ),
 				'type' => 'string',
 				'required' => true,
 				'validate_callback' => [ $this, 'validate_search' ],
@@ -471,10 +475,9 @@ class REST_Controller extends WP_REST_Controller {
 				'format' => 'date-time',
 			],
 			'orderby' => [
-				'description' => __( 'Sort results by relevance to the search, or by publication date.', 'h2' ),
+				'description' => __( 'Sort results by relevance to the search, or by publication date. Defaults to date for *, otherwise relevance.', 'h2' ),
 				'type' => 'string',
 				'enum' => [ 'relevance', 'date' ],
-				'default' => 'relevance',
 			],
 			'order' => [
 				'description' => __( 'Order results ascending or descending.', 'h2' ),
