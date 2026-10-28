@@ -195,10 +195,10 @@ function get_types() : array {
  * @return array|WP_Error {
  *     Search results, or an error if the search could not be run.
  *
- *     @type int      $total   Indexed matches across all pages, before resolving current objects.
+ *     @type int      $total          Indexed matches across all pages, before resolving current objects.
  *     @type string   $total_relation Whether the indexed total is eq, gte, or unknown.
- *     @type int[]    $sites Authorized site IDs selected for this search, not proof of indexing.
- *     @type Result[] $results Results for the requested page.
+ *     @type int[]    $sites          Authorized site IDs selected for this search, not proof of indexing.
+ *     @type Result[] $results        Results for the requested page.
  * }
  */
 function search( Query $query ) {
@@ -216,8 +216,8 @@ function search( Query $query ) {
 		'sites' => [],
 		'results' => [],
 	];
-	if ( trim( $query->search ) === '' && ! $query->author ) {
-		return new WP_Error( 'h2_search_invalid_query', __( 'Provide search text or an author ID.', 'h2' ), [ 'status' => 400 ] );
+	if ( trim( $query->search ) === '' ) {
+		return new WP_Error( 'h2_search_invalid_query', __( 'Provide search text or * to match all results.', 'h2' ), [ 'status' => 400 ] );
 	}
 
 	$sites = get_searchable_sites();
@@ -241,7 +241,7 @@ function search( Query $query ) {
 		return $request;
 	}
 
-	$response = send_request( $request['indices'], $request['body'], trim( $query->search ) === '' );
+	$response = send_request( $request['indices'], $request['body'], trim( $query->search ) === '*' );
 	if ( is_wp_error( $response ) ) {
 		return $response;
 	}
@@ -297,8 +297,8 @@ function build_request( Query $query, array $sites, array $types ) {
 		$indexable = $indexables->get( $type['indexable'] );
 		if ( empty( $indexable ) ) {
 			// Enumeration must not silently omit a requested type.
-			if ( trim( $query->search ) === '' ) {
-				return search_error( __( 'A requested result type is not available for author enumeration.', 'h2' ) );
+			if ( trim( $query->search ) === '*' ) {
+				return search_error( __( 'A requested result type is not available for wildcard search.', 'h2' ) );
 			}
 			// Indexable isn't registered (e.g. its feature is unavailable).
 			continue;
@@ -352,7 +352,7 @@ function build_request( Query $query, array $sites, array $types ) {
 		],
 	];
 
-	if ( trim( $query->search ) === '' ) {
+	if ( trim( $query->search ) === '*' ) {
 		$body['track_total_hits'] = true;
 		unset( $body['highlight'] );
 	}
@@ -413,8 +413,8 @@ function send_request( array $indices, array $body, bool $require_complete = fal
 	$header = [
 		'index' => array_values( array_unique( $indices ) ),
 
-		// Sites which have never been indexed have no index yet, but we don't
-		// want to crash the query.
+		// Ordinary text searches tolerate sites which have never been indexed.
+		// Wildcard searches require every selected index to be available.
 		'ignore_unavailable' => ! $require_complete,
 
 		// Use global term statistics, so that scores are comparable across
@@ -456,7 +456,7 @@ function send_request( array $indices, array $body, bool $require_complete = fal
 	// This still cannot establish whether those indices contain every current post.
 	if ( $require_complete && ( ( $result['timed_out'] ?? null ) !== false
 		|| ! isset( $result['_shards']['failed'] ) || $result['_shards']['failed'] !== 0 ) ) {
-		return search_error( __( 'Author enumeration could not complete across the selected indices.', 'h2' ) );
+		return search_error( __( 'Wildcard search could not complete across the selected indices.', 'h2' ) );
 	}
 
 	return $result;
@@ -538,7 +538,7 @@ function build_post_query( Query $query ) : array {
 			],
 		],
 	];
-	if ( trim( $query->search ) !== '' ) {
+	if ( trim( $query->search ) !== '*' ) {
 		$bool['should'] = build_match_clauses( $query, $fields );
 		$bool['minimum_should_match'] = 1;
 	}
@@ -605,7 +605,7 @@ function build_comment_query( Query $query ) : array {
 			],
 		],
 	];
-	if ( trim( $query->search ) !== '' ) {
+	if ( trim( $query->search ) !== '*' ) {
 		$bool['should'] = build_match_clauses( $query, $fields );
 		$bool['minimum_should_match'] = 1;
 	}

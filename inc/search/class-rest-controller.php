@@ -123,19 +123,10 @@ class REST_Controller extends WP_REST_Controller {
 		$query->author = $request['author'] ? (int) $request['author'] : null;
 		$query->after = $this->parse_date( $request['after'] );
 		$query->before = $this->parse_date( $request['before'] );
-		$query->orderby = $request['orderby'] ?? ( $query->search === '' ? 'date' : 'relevance' );
+		$query->orderby = $request['orderby'] ?? ( $query->search === '*' ? 'date' : 'relevance' );
 		$query->order = $request['order'];
 		$query->page = (int) $request['page'];
 		$query->per_page = (int) $request['per_page'];
-
-		// Validate the combination after REST has validated each parameter.
-		if ( $query->search === '' && ! $query->author ) {
-			return new WP_Error(
-				'rest_invalid_param',
-				__( 'Provide search text or an author ID.', 'h2' ),
-				[ 'status' => 400 ]
-			);
-		}
 
 		if ( $query->get_offset() + $query->per_page > MAX_RESULTS ) {
 			return new WP_Error(
@@ -184,6 +175,35 @@ class REST_Controller extends WP_REST_Controller {
 		}
 
 		return new DateTimeImmutable( '@' . $timestamp );
+	}
+
+	/**
+	 * Validate the search text.
+	 *
+	 * @param mixed           $value   Value to validate.
+	 * @param WP_REST_Request $request Request data.
+	 * @param string          $param   Parameter name.
+	 * @return true|WP_Error
+	 */
+	public function validate_search( $value, $request, $param ) {
+		$valid = rest_validate_request_arg( $value, $request, $param );
+		if ( is_wp_error( $valid ) ) {
+			return $valid;
+		}
+
+		if ( trim( $value ) === '' ) {
+			return new WP_Error(
+				'rest_invalid_param',
+				sprintf(
+					/* translators: %s: parameter name */
+					__( '%s cannot be empty.', 'h2' ),
+					$param
+				),
+				[ 'status' => 400 ]
+			);
+		}
+
+		return true;
 	}
 
 	/**
@@ -417,9 +437,10 @@ class REST_Controller extends WP_REST_Controller {
 
 		return [
 			'search' => [
-				'description' => __( 'Text to search for. May be omitted when an author ID is supplied.', 'h2' ),
+				'description' => __( 'Text to search for. Use * to match all results within the supplied filters.', 'h2' ),
 				'type' => 'string',
-				'default' => '',
+				'required' => true,
+				'validate_callback' => [ $this, 'validate_search' ],
 			],
 			'sites' => [
 				'description' => __( 'Limit results to these sites. Defaults to every site the current user can access.', 'h2' ),
@@ -454,7 +475,7 @@ class REST_Controller extends WP_REST_Controller {
 				'format' => 'date-time',
 			],
 			'orderby' => [
-				'description' => __( 'Sort results by relevance to the search, or by publication date. Defaults to date without search text, otherwise relevance.', 'h2' ),
+				'description' => __( 'Sort results by relevance to the search, or by publication date. Defaults to date for *, otherwise relevance.', 'h2' ),
 				'type' => 'string',
 				'enum' => [ 'relevance', 'date' ],
 			],
