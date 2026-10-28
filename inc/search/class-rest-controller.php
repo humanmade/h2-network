@@ -221,7 +221,7 @@ class REST_Controller extends WP_REST_Controller {
 			'result' => null,
 		];
 		if ( $item->object instanceof WP_Post ) {
-			$data['result'] = $this->prepare_post( $item->object, (bool) $request['include_content'] );
+			$data['result'] = $this->prepare_post( $item->object, $request );
 		} elseif ( $item->object instanceof WP_Comment ) {
 			$data['result'] = $this->prepare_comment( $item->object );
 		}
@@ -246,11 +246,11 @@ class REST_Controller extends WP_REST_Controller {
 	 * Uses the shape of the posts endpoint (`wp/v2/posts`), with the author
 	 * embedded. Must be called with the post's site switched to.
 	 *
-	 * @param WP_Post $post            Post to prepare.
-	 * @param bool    $include_content Include rendered content and revision metadata.
+	 * @param WP_Post         $post    Post to prepare.
+	 * @param WP_REST_Request $request Request data.
 	 * @return array
 	 */
-	protected function prepare_post( WP_Post $post, bool $include_content = false ) : array {
+	protected function prepare_post( WP_Post $post, WP_REST_Request $request ) : array {
 		/** This filter is documented in wp-includes/post-template.php */
 		$excerpt = apply_filters( 'get_the_excerpt', $post->post_excerpt, $post );
 
@@ -270,16 +270,20 @@ class REST_Controller extends WP_REST_Controller {
 			'author' => (int) $post->post_author,
 		];
 
-		if ( $include_content ) {
+		// Keep default searches lightweight; render extra fields only when selected.
+		$requested_fields = array_map( 'trim', wp_parse_list( $request['_fields'] ?? [] ) );
+		$fields = [ 'content.rendered', 'content.protected', 'modified', 'modified_gmt', 'status' ];
+		$fields = array_filter( $fields, static fn ( $field ) => rest_is_field_included( 'result.' . $field, $requested_fields ) );
+		if ( $fields ) {
 			// Use core's view response so blocks, post context and password handling
 			// match an exact REST read. The search resolver already checked access.
-			$fields = [ 'content', 'modified', 'modified_gmt', 'status' ];
-			$request = new WP_REST_Request( 'GET' );
-			$request->set_param( 'context', 'view' );
-			$request->set_param( '_fields', $fields );
+			$post_request = new WP_REST_Request( 'GET' );
+			$post_request->set_param( 'context', 'view' );
+			$post_request->set_param( '_fields', $fields );
 			$controller = new WP_REST_Posts_Controller( $post->post_type );
-			$response = $controller->prepare_item_for_response( $post, $request );
-			$data = array_merge( $data, array_intersect_key( $response->get_data(), array_flip( $fields ) ) );
+			$response = $controller->prepare_item_for_response( $post, $post_request );
+			$field_names = array_map( static fn ( $field ) => explode( '.', $field )[0], $fields );
+			$data = array_merge( $data, array_intersect_key( $response->get_data(), array_flip( $field_names ) ) );
 		}
 
 		$embedded = [];
@@ -509,11 +513,6 @@ class REST_Controller extends WP_REST_Controller {
 				'minimum' => 1,
 				'maximum' => 100,
 			],
-			'include_content' => [
-				'description' => __( 'Include full rendered post content, protection state, modification dates and publication status. Does not change access or pagination; comments already include their content.', 'h2' ),
-				'type' => 'boolean',
-				'default' => false,
-			],
 		];
 	}
 
@@ -599,7 +598,7 @@ class REST_Controller extends WP_REST_Controller {
 					'description' => __( 'HTML excerpt of the post.', 'h2' ),
 				] ),
 				'content' => [
-					'description' => __( 'Full rendered post content. Only included when include_content is true.', 'h2' ),
+					'description' => __( 'Full rendered post content. Only included when selected via _fields.', 'h2' ),
 					'type' => 'object',
 					'properties' => [
 						'rendered' => [
@@ -611,13 +610,13 @@ class REST_Controller extends WP_REST_Controller {
 					],
 				],
 				'modified' => array_merge( $date_schema, [
-					'description' => __( 'Modification date, in the timezone of the site. Only included when include_content is true.', 'h2' ),
+					'description' => __( 'Modification date, in the timezone of the site. Only included when selected via _fields.', 'h2' ),
 				] ),
 				'modified_gmt' => array_merge( $date_schema, [
-					'description' => __( 'Modification date, as GMT. Only included when include_content is true.', 'h2' ),
+					'description' => __( 'Modification date, as GMT. Only included when selected via _fields.', 'h2' ),
 				] ),
 				'status' => [
-					'description' => __( 'Live publication status. Only included when include_content is true.', 'h2' ),
+					'description' => __( 'Live publication status. Only included when selected via _fields.', 'h2' ),
 					'type' => 'string',
 				],
 				'author' => [
