@@ -18,6 +18,7 @@ require __DIR__ . '/inc/search/class-query.php';
 require __DIR__ . '/inc/search/class-result.php';
 require __DIR__ . '/inc/search/class-rest-controller.php';
 require __DIR__ . '/inc/search/namespace.php';
+require __DIR__ . '/inc/search/native.php';
 require __DIR__ . '/inc/ui/namespace.php';
 
 bootstrap();
