@@ -195,8 +195,10 @@ function get_types() : array {
  * @return array|WP_Error {
  *     Search results, or an error if the search could not be run.
  *
- *     @type int      $total   Total number of matching results across all pages.
- *     @type Result[] $results Results for the requested page.
+ *     @type int      $total          Indexed matches across all pages, before resolving current objects.
+ *     @type string   $total_relation Whether the indexed total is eq, gte, or unknown.
+ *     @type int[]    $sites          Authorized site IDs selected for this search, not proof of indexing.
+ *     @type Result[] $results        Results for the requested page.
  * }
  */
 function search( Query $query ) {
@@ -210,16 +212,20 @@ function search( Query $query ) {
 
 	$empty = [
 		'total' => 0,
+		'total_relation' => 'eq',
+		'sites' => [],
 		'results' => [],
 	];
 	if ( trim( $query->search ) === '' ) {
-		return $empty;
+		return new WP_Error( 'h2_search_invalid_query', __( 'Provide search text or * to match all results.', 'h2' ), [ 'status' => 400 ] );
 	}
 
 	$sites = get_searchable_sites();
 	if ( ! empty( $query->sites ) ) {
 		$sites = array_intersect_key( $sites, array_flip( $query->sites ) );
 	}
+
+	$empty['sites'] = array_keys( $sites );
 
 	$types = get_types();
 	if ( ! empty( $query->types ) ) {
@@ -235,7 +241,7 @@ function search( Query $query ) {
 		return $request;
 	}
 
-	$response = send_request( $request['indices'], $request['body'] );
+	$response = send_request( $request['indices'], $request['body'], trim( $query->search ) === '*' );
 	if ( is_wp_error( $response ) ) {
 		return $response;
 	}
@@ -250,12 +256,16 @@ function search( Query $query ) {
 
 	// Elasticsearch 7+ reports the total as an object.
 	$total = $response['hits']['total'] ?? 0;
+	$relation = 'unknown';
 	if ( is_array( $total ) ) {
+		$relation = in_array( $total['relation'] ?? null, [ 'eq', 'gte' ], true ) ? $total['relation'] : 'unknown';
 		$total = $total['value'] ?? 0;
 	}
 
 	return [
 		'total' => (int) $total,
+		'total_relation' => $relation,
+		'sites' => array_keys( $sites ),
 		'results' => $results,
 	];
 }
@@ -286,6 +296,10 @@ function build_request( Query $query, array $sites, array $types ) {
 	foreach ( $types as $slug => $type ) {
 		$indexable = $indexables->get( $type['indexable'] );
 		if ( empty( $indexable ) ) {
+			// Enumeration must not silently omit a requested type.
+			if ( trim( $query->search ) === '*' ) {
+				return search_error( __( 'A requested result type is not available for wildcard search.', 'h2' ) );
+			}
 			// Indexable isn't registered (e.g. its feature is unavailable).
 			continue;
 		}
@@ -338,6 +352,11 @@ function build_request( Query $query, array $sites, array $types ) {
 		],
 	];
 
+	if ( trim( $query->search ) === '*' ) {
+		$body['track_total_hits'] = true;
+		unset( $body['highlight'] );
+	}
+
 	if ( $query->orderby === 'date' ) {
 		$body['sort'] = [
 			[
@@ -387,15 +406,16 @@ function build_request( Query $query, array $sites, array $types ) {
  *
  * @param string[] $indices Indices to search.
  * @param array    $body    Search request body.
+ * @param bool     $require_complete Fail if an index is unavailable or execution is incomplete.
  * @return array|WP_Error Decoded search response, or an error.
  */
-function send_request( array $indices, array $body ) {
+function send_request( array $indices, array $body, bool $require_complete = false ) {
 	$header = [
 		'index' => array_values( array_unique( $indices ) ),
 
-		// Sites which have never been indexed have no index yet, but we don't
-		// want to crash the query.
-		'ignore_unavailable' => true,
+		// Ordinary text searches tolerate sites which have never been indexed.
+		// Wildcard searches require every selected index to be available.
+		'ignore_unavailable' => ! $require_complete,
 
 		// Use global term statistics, so that scores are comparable across
 		// indices of very different sizes.
@@ -430,6 +450,13 @@ function send_request( array $indices, array $body ) {
 		$error = $result['error'] ?? $data['error'] ?? null;
 		$details = is_array( $error ) ? ( $error['reason'] ?? $error['type'] ?? null ) : $error;
 		return search_error( __( 'The search request failed.', 'h2' ), is_scalar( $details ) ? (string) $details : null );
+	}
+
+	// Exact indexed totals are useful only if every selected index was queried.
+	// This still cannot establish whether those indices contain every current post.
+	if ( $require_complete && ( ( $result['timed_out'] ?? null ) !== false
+		|| ! isset( $result['_shards']['failed'] ) || $result['_shards']['failed'] !== 0 ) ) {
+		return search_error( __( 'Wildcard search could not complete across the selected indices.', 'h2' ) );
 	}
 
 	return $result;
@@ -499,22 +526,24 @@ function build_post_query( Query $query ) : array {
 		];
 	}
 
-	return [
-		'bool' => [
-			'filter' => $filter,
-			'must_not' => [
-				// Exclude password-protected posts. An `exists` query can't be
-				// used, as an empty password is still indexed as a value.
-				[
-					'wildcard' => [
-						'post_password' => '*',
-					],
+	$bool = [
+		'filter' => $filter,
+		'must_not' => [
+			// Exclude password-protected posts. An `exists` query can't be
+			// used, as an empty password is still indexed as a value.
+			[
+				'wildcard' => [
+					'post_password' => '*',
 				],
 			],
-			'should' => build_match_clauses( $query, $fields ),
-			'minimum_should_match' => 1,
 		],
 	];
+	if ( trim( $query->search ) !== '*' ) {
+		$bool['should'] = build_match_clauses( $query, $fields );
+		$bool['minimum_should_match'] = 1;
+	}
+
+	return [ 'bool' => $bool ];
 }
 
 /**
@@ -566,20 +595,22 @@ function build_comment_query( Query $query ) : array {
 		];
 	}
 
-	return [
-		'bool' => [
-			'filter' => $filter,
-			'must_not' => [
-				[
-					'terms' => [
-						'comment_type.raw' => [ 'pingback', 'trackback' ],
-					],
+	$bool = [
+		'filter' => $filter,
+		'must_not' => [
+			[
+				'terms' => [
+					'comment_type.raw' => [ 'pingback', 'trackback' ],
 				],
 			],
-			'should' => build_match_clauses( $query, $fields ),
-			'minimum_should_match' => 1,
 		],
 	];
+	if ( trim( $query->search ) !== '*' ) {
+		$bool['should'] = build_match_clauses( $query, $fields );
+		$bool['minimum_should_match'] = 1;
+	}
+
+	return [ 'bool' => $bool ];
 }
 
 /**
