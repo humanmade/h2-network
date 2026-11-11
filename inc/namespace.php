@@ -241,6 +241,7 @@ function add_script_data( array $data ) : array {
 	$data['network'] = [
 		'name' => get_network()->site_name,
 		'main_site' => get_network()->site_id,
+		'domain' => get_network()->domain,
 	];
 
 	// Use the network's Mapbox key, unless one is already set via constant.
