@@ -10,8 +10,8 @@ namespace H2\Network\Search;
 use DateTimeInterface;
 use ElasticPress\Elasticsearch;
 use ElasticPress\Indexables;
-use function H2\Network\Search\Native\bootstrap as bootstrap_native_search;
 use H2\Network;
+use H2\Network\Search\Native;
 use WP_Comment;
 use WP_Error;
 use WP_Post;
@@ -38,7 +38,7 @@ const HIGHLIGHT_END = "\u{E001}";
  * Bootstrap.
  */
 function bootstrap() : void {
-	bootstrap_native_search();
+	Native\bootstrap();
 	add_action( 'rest_api_init', __NAMESPACE__ . '\\register_rest_routes' );
 	add_filter( 'ep_feature_active', __NAMESPACE__ . '\\activate_comments_feature', 10, 3 );
 }
